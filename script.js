@@ -140,13 +140,14 @@ function gotoRegister() {
 }
 
 function getTicketDetailsModal(){
-  rootEl.innerHTML = `
+  const modalContainer = document.getElementById("modalContainer");
+  modalContainer.innerHTML = `
   <div class="modal fade" id="ticketDetailsModal" tabindex="-1" role="dialog" aria-labelledby="ticketDetailsModalLabel" aria-hidden="true">
     <div class="modal-dialog" role="document">
       <div class="modal-content">
         <div class="modal-header">
           <h5 class="modal-title" id="ticketDetailsModalLabel">Ticket Details</h5>
-          <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+          <button type="button" class="btn btn-secondary close" data-dismiss="modal" aria-label="Close">
             <span aria-hidden="true">&times;</span>
           </button>
         </div>
@@ -154,39 +155,50 @@ function getTicketDetailsModal(){
           <!-- Ticket information will be dynamically loaded here -->
         </div>
         <div class="modal-footer">
-          <button type="button" class="btn btn-secondary" data-dismiss="modal">Close</button>
+          <button type="button" class="btn btn-secondary close" data-dismiss="modal">Close</button>
         </div>
       </div>
     </div>
   </div>
   `;
-  // Bootstrap modal initialization if needed
-  $('#ticketDetailsModal').modal();
+  $(document).on('click', '.close', function() {
+    $('#ticketDetailsModal').modal('hide');
+  });
+  
 }
 
-// Ticket detaylarını göstermek için
-function showTicketDetails(ticketId) {
-  axios.get(`https://localhost:7102/api/Tickets/GetTicket/${ticketId}`)
+async function showTicketDetails(ticketId) {
+  const url = `https://localhost:7102/api/Tickets/GetTicket/${ticketId}`;
+  await axios.get(url)
     .then(response => {
       const ticket = response.data;
-      // Update modal content
       const modalBody = document.querySelector('#ticketDetailsModal .modal-body');
       modalBody.innerHTML = `
         <p><strong>ID:</strong> ${ticket.id}</p>
         <p><strong>Subject:</strong> ${ticket.subject}</p>
-        <p><strong>Description:</strong> ${ticket.description}</p>
-        <p><strong>Status:</strong> ${ticket.status}</p>
-        <p><strong>Priority:</strong> ${ticket.priority}</p>
+        <p><strong>Status:</strong> 
+          <select id="statusSelect" class="form-control" data-ticket-id="${ticket.id}" onchange="changeTicketStatus(event)">
+            <option value="Open" ${ticket.status === 'Open' ? 'selected' : ''}>Open</option>
+            <option value="Closed" ${ticket.status === 'Closed' ? 'selected' : ''}>Closed</option>
+          </select>
+        </p>
+        <p><strong>Priority:</strong> ${ticket.isUrgent ? 'Urgent' : 'Normal'}</p>
       `;
-      $('#ticketDetailsModal').modal('show'); // Trigger modal display
+
+      const modalFooter = document.querySelector('#ticketDetailsModal .modal-footer');
+      modalFooter.innerHTML = `
+        <button type="button" class="btn btn-danger" onclick="deleteTicket('${ticket.id}')">Delete</button>
+        <button type="button" class="btn btn-secondary close" data-dismiss="modal">Close</button>
+        <button type="button" class="btn btn-primary" onclick="changeTicketStatus('${ticket.id}', document.getElementById('statusSelect').value)">Save Changes</button>
+      `;
+      $('#ticketDetailsModal').modal('show');
     })
     .catch(error => {
       console.error('Error loading ticket details:', error);
-      alert('Failed to load ticket details.');
+      alert('Failed to load ticket details: ' + (error.response && error.response.data.message || "Unknown error"));
     });
 }
 
-// Örnek olarak anasayfa yüklendiğinde modalı hazırla
 document.addEventListener('DOMContentLoaded', function() {
   getTicketDetailsModal();
 });
@@ -210,12 +222,7 @@ async function gotoHome() {
           <td>${data.subject}</td>
           <td>${data.isUrgent}</td>
           <td>${data.createdDate}</td>
-          <td>
-            <select onchange="changeTicketStatus('${data.id}', event)" class="form-control">
-              ${data.status === "Open"}
-              <option ${data.status === "Open" ? "selected" : ""}>Open</option>  
-              <option ${data.status === "Closed" ? "selected" : ""}>Closed</option>  
-            </select>
+          <td>${data.status}</td>
           </td>
         </tr>
       `
@@ -225,30 +232,24 @@ async function gotoHome() {
 
     rootEl.innerHTML = `
       <h1>ITDesk Home Page</h1>
-      <button id="logoutButton" onclick="logout()" class="btn btn-primary">Logout</button>
       <div class="mt-2">
         <h3>New Task Form</h3>
         <div>
-          <div class="form-control">
-            Subject
-            <input id="subject" class="form-control mt-1" style="width:250px;" type="text">
+          <div class="form-group">
+            <label>Subject</label>
+            <input id="subject" class="form-control mt-1" type="text">
           </div>
-
-          <div class="form-control mt-1">
-            IsUrgent
-            <select id="isUrgent" class="form-control" style="width:150px;">
+          <div class="form-group mt-1">
+            <label>IsUrgent</label>
+            <select id="isUrgent" class="form-control">
               <option>No Urgent</option>
               <option>Normal</option>
               <option>Urgent</option>
             </select>
           </div>
-
-          <div class="form-control mt-1">
-            <button onclick="createTicket()" class="btn btn-primary">Create a New Task</button>
-          </div>
+          <button onclick="createTicket()" class="btn btn-dark">Create a New Task</button>
         </div>
       </div>
-      <hr>
       <table class="table table-hover table-bordered mt-2">
         <thead>
           <tr>
@@ -259,9 +260,7 @@ async function gotoHome() {
             <th>Status</th>
           </tr>
         </thead>
-        <tbody>
-          ${text}
-        </tbody>
+        <tbody>${text}</tbody>
       </table>`;
       
   } else {
@@ -275,11 +274,11 @@ async function createTicket(){
   const localStorageResponseString = localStorage.getItem("response");
   const localStorageResponse = JSON.parse(localStorageResponseString);
   const userId = localStorageResponse.userId;
-  
+
   const data = {
-    userId: userId,
-    subject: subjectEl.value,
-    isUrgent: isUrgentEl.value
+      userId: userId,
+      subject: subjectEl.value,
+      isUrgent: isUrgentEl.value
   };
 
   try {
@@ -290,7 +289,7 @@ async function createTicket(){
     });
 
     toastr.success('Ticket create is successful');
-    gotoHome();
+  gotoHome();
 
   } catch (error) {
     console.error("Error creating ticket:", error);
@@ -303,8 +302,10 @@ async function createTicket(){
   }
 }
 
-async function changeTicketStatus(id, event) {
-  const originalStatus = event.target.value;
+async function changeTicketStatus(event) {
+  const selectElement = event.target;
+  const ticketId = selectElement.dataset.ticketId;
+  const originalStatus = selectElement.value;
 
   var response = await Swal.fire({
     title: 'Change Status!',
@@ -315,24 +316,49 @@ async function changeTicketStatus(id, event) {
     cancelButtonText: "Cancel"
   });
 
-  if(response.isConfirmed){
+  if (response.isConfirmed) {
+    const newStatus = selectElement.value;
     const data = {
-      id: id,
-      status: event.target.value
+      id: ticketId,
+      status: newStatus
     };
 
     try {
-      await axios.post("https://localhost:7102/api/Tickets/ChangeStatus", data);
-      toastr.success('Ticket status change is successful');
-      gotoHome();      
+      await axios.post(`https://localhost:7102/api/Tickets/ChangeStatus`, data);
+      toastr.success('Ticket status updated successfully');
+      $('#ticketDetailsModal').modal('hide');
+      gotoHome();
     } catch (err) {
-      console.error("Error changing ticket status:", err);
-      toastr.error("Failed to change ticket status: " + (err.response && err.response.data.message || "Unknown error"));
-      event.target.value = originalStatus;
+      toastr.error('Failed to update ticket status: ' + (err.response && err.response.data.message || "Unknown error"));
+      console.error('Error updating ticket status:', err);
     }
   } else {
-    event.target.value = originalStatus;
+    selectElement.value = originalStatus;
   }
+}
+
+async function deleteTicket(ticketId) {
+  Swal.fire({
+    title: 'Are you sure?',
+    text: "You won't be able to revert this!",
+    icon: 'warning',
+    showCancelButton: true,
+    confirmButtonColor: '#3085d6',
+    cancelButtonColor: '#d33',
+    confirmButtonText: 'Yes, delete it!'
+  }).then(async (result) => {
+    if (result.isConfirmed) {
+      try {
+        const response = await axios.post(`https://localhost:7102/api/Tickets/Delete/${ticketId}`);
+        toastr.success('Ticket deleted successfully');
+        $('#ticketDetailsModal').modal('hide');
+        gotoHome();
+      } catch (err) {
+        toastr.error('Failed to delete ticket: ' + (err.response && err.response.data.message || "Unknown error"));
+        console.error('Error deleting ticket:', err);
+      }
+    }
+  });
 }
 
 function checkValidation(e) {
@@ -401,7 +427,7 @@ function isTrueReturnSuccessOrDanger(expression) {
   return "text-danger"
 }
 
-function login() {
+async function login() {
   const userNameOrEmailEl = document.getElementById("userNameOrEmail");
   const userNameOrEmailIsValid = userNameOrEmail.validity.valid;
 
@@ -424,7 +450,7 @@ function login() {
   }
 
   if (userNameOrEmailIsValid && passwordIsValid) {
-    axios.post("https://localhost:7102/api/Auth/Login", data)
+    await axios.post("https://localhost:7102/api/Auth/Login", data)
       .then(res => {
         localStorage.setItem("response", JSON.stringify(res.data));
         Swal.fire({
@@ -440,7 +466,6 @@ function login() {
       .catch(error => {
         console.error("Login error:", error);
         if (error.response && error.response.data) {
-          // Assuming the server sends back a plain text message
           const message = error.response.data.message || "An unexpected error occurred";
           Swal.fire({
             icon: 'error',
@@ -458,7 +483,7 @@ function login() {
   }
 }
 
-function register() {
+async function register() {
   const nameEl = document.getElementById("name");
   const nameIsValid = nameEl.validity.valid;
   
@@ -508,7 +533,7 @@ function register() {
       password: passwordEl.value
     }
 
-    axios.post("https://localhost:7102/api/Auth/Register", data).then(res => {
+    await axios.post("https://localhost:7102/api/Auth/Register", data).then(res => {
       const Toast = Swal.mixin({
         toast: true,
         position: "bottom-end",
@@ -572,8 +597,6 @@ function checkSession() {
       gotoHome();
   }
 }
-
-
 
 function logout() {
   localStorage.removeItem("response");
